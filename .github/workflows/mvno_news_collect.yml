@@ -1,0 +1,63 @@
+name: MVNO 뉴스 실시간 수집
+
+on:
+  schedule:
+    - cron: '0 */3 * * *'  # 3시간마다 실행 (00:00, 03:00, 06:00, ...)
+  workflow_dispatch:
+    inputs:
+      search_hours:
+        description: '검색 기간 (시간)'
+        required: false
+        default: '3'
+      similarity_threshold:
+        description: '유사도 임계값 (0.0~1.0)'
+        required: false
+        default: '0.60'
+
+permissions:
+  contents: write
+
+jobs:
+  collect-news:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        pip install requests pandas openpyxl pytz
+    
+    - name: Run news collection
+      env:
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_CHAT_ID_NEWS: ${{ secrets.TELEGRAM_CHAT_ID_NEWS }}
+        NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
+        NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
+        SEARCH_HOURS: ${{ github.event.inputs.search_hours || '3' }}
+        SIMILARITY_THRESHOLD: ${{ github.event.inputs.similarity_threshold || '0.60' }}
+      run: |
+        python naver_news.py
+    
+    - name: Commit and push data
+      run: |
+        git config --local user.email "github-actions[bot]@users.noreply.github.com"
+        git config --local user.name "github-actions[bot]"
+        
+        git add mvno_news/ news_reports/
+        
+        if git diff --staged --quiet; then
+          echo "No changes to commit"
+        else
+          git commit -m "MVNO 뉴스 수집: $(TZ=Asia/Seoul date '+%Y-%m-%d %H:%M KST')"
+          git push
+        fi
