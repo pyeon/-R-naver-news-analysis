@@ -1,0 +1,58 @@
+name: MVNO 뉴스 일일 요약
+
+on:
+  schedule:
+    - cron: '0 1 * * *'  # 매일 오전 10시 KST (01:00 UTC)
+  workflow_dispatch:
+    inputs:
+      similarity_threshold:
+        description: '유사도 임계값 (0.0~1.0)'
+        required: false
+        default: '0.60'
+
+permissions:
+  contents: write
+
+jobs:
+  daily-summary:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        pip install requests pandas openpyxl pytz
+    
+    - name: Run daily summary
+      env:
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_CHAT_ID_NEWS: ${{ secrets.TELEGRAM_CHAT_ID_NEWS }}
+        NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
+        NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
+        SIMILARITY_THRESHOLD: ${{ github.event.inputs.similarity_threshold || '0.60' }}
+      run: |
+        python naver_news_daily_summary.py
+    
+    - name: Commit and push data
+      run: |
+        git config --local user.email "github-actions[bot]@users.noreply.github.com"
+        git config --local user.name "github-actions[bot]"
+        
+        git add mvno_news/ news_reports/
+        
+        if git diff --staged --quiet; then
+          echo "No changes to commit"
+        else
+          git commit -m "MVNO 일일 요약: $(TZ=Asia/Seoul date -d 'yesterday' '+%Y-%m-%d')"
+          git push
+        fi
